@@ -10,7 +10,7 @@ function Init()
 {
     var xhr = new XMLHttpRequest();
 
-    xhr.open('GET', 'http://localhost:8080/contacts', true);
+    xhr.open('GET', 'http://localhost:8080/contacts.json', true);
     
     xhr.send();
     
@@ -29,7 +29,7 @@ function Init()
       if (this.responseText != null)
       {
          var json = JSON.parse(this.responseText);
-         PhoneBook.contacts = json.contacts;
+         phoneBook.contacts = json.contacts;
           }
       Update();
       var button = document.getElementById('aceptButton');
@@ -60,11 +60,13 @@ function New()
     contact.Name = nameEdit.value;
     contact.Phone = phoneEdit.value;
     contact.Description = descriptionEdit.value;
-    contact.id = PhoneBook.contacts.length ;
-    PhoneBook.contacts.push(contact);
+    contact.id = phoneBook.contacts.length ;
+    phoneBook.contacts.push(contact);
 
+    SendContactFormToServer(contact.id);
+    
     var contactsList = document.getElementById('contacts-list');
-    alert(contact.id);
+   
     var contactHtml = '<div class="contact"  id="contact ' + contact.id +  '">\r\n';
     contactHtml += '<p>';
     contactHtml += 'Name: ' +  contact.Name + '<br>'; 
@@ -114,14 +116,14 @@ function Search()
 
 function Update() 
 {
-    if (PhoneBook.contacts != null && PhoneBook.contacts != undefined)
+    if (phoneBook.contacts != null && phoneBook.contacts != undefined)
     {
         var contactsList = document.getElementById('contacts-list'); 
         if (contactsList == null )
         {
             return;
         }
-        if (PhoneBook == undefined || PhoneBook.contacts == null)
+        if (phoneBook == undefined || phoneBook.contacts == null)
         {
             return;
         }
@@ -129,9 +131,9 @@ function Update()
         var contactsListHtml = '';
 
         
-        for (var i = 0; i < PhoneBook.contacts.length; i++)
+        for (var i = 0; i < phoneBook.contacts.length; i++)
             {
-                var contact = PhoneBook.contacts[i];
+                var contact = phoneBook.contacts[i];
                 
                 var contactHtml = '<div class="contact"  id="contact ' + contact.id +  '">\r\n';
                 contactHtml += '<p>';
@@ -173,16 +175,16 @@ function Contact_OnClick(event)
 
     elem.style.backgroundColor = 'grey';
     var id = +elem.id.split(' ')[1];
-    for (var i = 0; i< PhoneBook.contacts.length; i++)
+    for (var i = 0; i< phoneBook.contacts.length; i++)
     {
-        if (PhoneBook.contacts[i].id != id)
+        if (phoneBook.contacts[i].id != id)
         {
-            var anotherElem = document.getElementById('contact ' + PhoneBook.contacts[i].id);
+            var anotherElem = document.getElementById('contact ' + phoneBook.contacts[i].id);
             anotherElem.style.backgroundColor = ''; 
         }
         else
         {
-            FocusedContact = PhoneBook.contacts[i];
+            FocusedContact = phoneBook.contacts[i];
         }
     }
 
@@ -197,9 +199,9 @@ function Contact_OnClick(event)
 
 function AddOnclickEventToContacts()
 {
-    for (var i = 0; i < PhoneBook.contacts.length; i++)
+    for (var i = 0; i < phoneBook.contacts.length; i++)
     {
-        var elem = document.getElementById('contact ' + PhoneBook.contacts[i].id);
+        var elem = document.getElementById('contact ' + phoneBook.contacts[i].id);
         elem.onclick = Contact_OnClick;
         if (elem.style.backgroundColor == 'grey')
         {
@@ -210,7 +212,27 @@ function AddOnclickEventToContacts()
 }
 
 
-var PhoneBook = {};
+
+function SendContactFormToServer(id)
+{
+    // создать объект для формы
+    var formData = new FormData(document.forms.contact);
+
+    // добавить к пересылке ещё пару ключ - значение
+    formData.append("id", id);
+
+    // отослать
+    var xhr = new XMLHttpRequest();
+    xhr.open("POST", "/newcontact");
+    xhr.send(formData);
+}
+
+
+
+
+var phoneBook = {};
 var FocusedContact = null;
-PhoneBook.contacts = [];
+phoneBook.contacts = [];
 Init();
+
+
