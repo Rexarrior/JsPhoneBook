@@ -10,18 +10,20 @@ var port = 8080;
 
 var phoneBookJsonFileName = './contacts.json';
 var tempFilesPath = './temp/';
+var deleteListFileName = "to_delete.json";
 
-UnionTempFiles(phoneBookJsonFileName);
+var allContacts = {};
 
 var background  = fs.readFileSync('./background.jpg');
 var contactsListBackground = fs.readFileSync('./contacts_list_background.jpg');
 var favicon = fs.readFileSync('./favicon.ico');
 
+var IsUnionTempFilesSeted = false;
 
 
 
 
-
+UnionTempFiles(phoneBookJsonFileName);
 var server = http.createServer(OnRequest);
 
 
@@ -126,21 +128,27 @@ function OnRequest(request, response)
     case '/contacts.json':
       {
         response.writeHead(200, {'Content-Type': 'text/json;'});
+       
+        var phoneBook  = {}
+        phoneBook.contacts = allContacts;
 
-        if (fs.existsSync(phoneBookJsonFileName))
-        {
-          var fileContent = fs.readFileSync(phoneBookJsonFileName, 'utf8');
-          response.end(fileContent);
-
-        }
-        response.end();
-
+        response.end(JSON.stringify(phoneBook));
+        return;
       }
       break;
       case '/newcontact':
       {
-         OnNewContactPost(request, response);
-      }
+        OnNewContactPost(request, response);
+      }break;
+      case '/deletecontact':
+      {
+        var id = +request.headers.id;
+        
+        DeleteContact(id);
+        response.writeHead(200, {Connection:"close"});
+        response.end();
+
+      }break;
       default:
         {
           response.writeHead(404);
@@ -175,7 +183,7 @@ function OnNewContactPost(request, response)
       }break;
       case "id":
       {
-        contact.id = value;
+        contact.id = +value;
       }break;
       
 
@@ -193,7 +201,8 @@ function OnNewContactPost(request, response)
 
   });
 
-  busboy.on('finish', function() {
+  busboy.on('finish', function() 
+  {
     
     if (contact.Name === null ||
         contact.Phone === null ||
@@ -203,10 +212,11 @@ function OnNewContactPost(request, response)
       {
         console.log("POST. Bad contact:" + contact);
         response.writeHead(400, { Connection: 'close' });
-        response.end()
+        response.end();
       }
     
     contactJson = JSON.stringify(contact);
+    allContacts.push(contact);
 
     
 
@@ -221,6 +231,16 @@ function OnNewContactPost(request, response)
     response.writeHead(200, { Connection: 'close' });
     response.end();
     console.log('POST. finished.')
+    
+    if (!IsUnionTempFilesSeted)
+    {
+      IsUnionTempFilesSeted = true;
+      setTimeout(function()
+      {
+        UnionTempFiles();
+        IsUnionTempFilesSeted = false;
+      }, 60000);
+    }
   });
   
   request.pipe(busboy);
@@ -236,71 +256,75 @@ function OnNewContactPost(request, response)
 
 function UnionTempFiles()
 {
-
+  var contactsList;
   fs.readdir(tempFilesPath, function(err, items) 
   {
+    
     if (err != null)
     {
       console.log("UnionTempFiles: Error: " + err);
       return;
     }
+   
 
+    var phoneBookJson = fs.readFileSync(phoneBookJsonFileName);
+    contactsList = JSON.parse(phoneBookJson).contacts;
     if (items.length == 0)
     {
       console.log('UnionTempFiles: temp files not found.');
+      DeleteNullContacts(contactsList);
+      DeleteContactByDeleteList(contactsList);
+      WritePhoneBook(contactsList);
+      allContacts = contactsList;
       return;
     }
 
+
     console.log("UnionTempFiles: temp files:  " + items);
 
-    var phoneBookJson = fs.readFileSync(phoneBookJsonFileName);
-    var contactsList = JSON.parse(phoneBookJson).contacts;
+   
     for (var i=0; i<items.length; i++) 
     {
       var fileContent = fs.readFileSync(tempFilesPath + items[i]);
       if (fileContent == "")
       {
         console.log('UnionTempFiles: empty file ' + items[i]);
-        return;
+        continue;
       }
       var contact = {};
       if (!IsJsonString(fileContent, contact))
       {
         console.log('UnionTempFiles: bad json. Filename: ' + items[i]);
-      }
-      contactsList.push(contact.value);
-    }
-
-
-    i = 0;
-    while (i < contactsList.length)
-    {
-      if (contactsList[i] == null)
-      {
-        contactsList.splice(i, 1);
+        
       }
       else
       {
-        i++;
+        contactsList.push(contact.value);
       }
+
     }
 
 
-    phoneBook = {};
-    phoneBook.contacts = contactsList;
-    phoneBookJson = JSON.stringify(phoneBook);
-    fs.writeFileSync(phoneBookJsonFileName, phoneBookJson);
+    
+
+    DeleteNullContacts(contactsList);
+    DeleteContactByDeleteList(contactsList);
+
+
+
+    WritePhoneBook(contactsList);
 
     for (var i=0; i<items.length; i++) 
     {
       fs.unlink(tempFilesPath + items[i], function(err){
         if (err != null) 
         {
-          console.log('unlinc error:' + err);
+          console.log('UnionTempFiles: unlinc error:' + err);
         }});
     }
+    allContacts = contactsList;
     
-});
+  });
 }
 
 
@@ -318,3 +342,172 @@ function IsJsonString(str, outStr) {
 }
 
 
+
+
+
+
+function DeleteContact(id)
+{
+  for (var i  = 0; i < allContacts.length; i++)
+  {
+    if (+(allContacts[i].id) == +id)
+    {
+      
+      allContacts.splice(i, 1);
+    }
+  }
+
+  fs.readdir(tempFilesPath, function(err, items)
+  {
+    if (err != null)
+    {
+      console.log('DeleteContact: Error: ' + err);
+    }
+
+
+    var str = '' + id + '.json';
+    var ind = items.indexOf(str);
+    var deleteList = {}; 
+    if (ind = -1)
+    {
+     
+      if (fs.existsSync(deleteListFileName))
+      {
+        var fileContent = fs.readFileSync(deleteListFileName);
+        if (!IsJsonString(fileContent, deleteList))
+        {
+          fs.unlink(deleteListFileName, function(err){
+            if (err != null) 
+            {
+              console.log('DeleteContact: unlinc error:' + err);
+            }});
+        }
+
+        deleteList = deleteList.value;
+       
+      }else
+      {
+        deleteList.items = [];
+
+      }
+      deleteList.items.push(id);
+      fileContent = JSON.stringify(deleteList);
+      fs.writeFile(deleteListFileName, fileContent, function(err)
+      {
+        if (err != null)
+        {
+          console.log("DeleteContact: error: "+ err);
+        }
+      });  
+
+      return;
+    }else
+    {
+
+    fs.unlink(tempFilesPath + items[ind], function(err){
+      if (err != null) 
+      {
+        console.log('DeleteContact: unlinc error:' + err);
+      }});
+    }
+
+    if (!IsUnionTempFilesSeted)
+    {
+      IsUnionTempFilesSeted = true;
+      setTimeout(function()
+      {
+        UnionTempFiles();
+        IsUnionTempFilesSeted = false;
+      }, 60000);
+    }
+  });
+  
+}
+
+
+
+
+function DeleteContactByDeleteList(contactsList)
+{
+  if (fs.existsSync(deleteListFileName))
+    {
+      var fileContent = fs.readFileSync(deleteListFileName);
+      var deleteList = {};
+      if (IsJsonString(fileContent, deleteList))
+      {
+        deleteList = deleteList.value.items; 
+        for (var i = 0; i < deleteList.length; i++)
+        {
+          DeleteContactById(contactsList, deleteList[i]);
+        }
+
+      }
+      else
+      {
+        console.log('DeleteContactByDeleteList: error: bad json');
+      }
+      fs.unlink(deleteListFileName, function(err){
+        if (err != null) 
+        {
+          console.log('DeleteContactByDeleteList: unlinc error:' + err);
+        }});
+    }
+}
+
+
+
+function DeleteContactById(contactsList, id)
+{
+  if (contactsList == null || contactsList == undefined)
+  {
+    console.log("DeleteContactById: bad contactsList: " + contactsList);
+    return;
+
+  }
+
+  for (var i = 0; i < contactsList.length; i++)
+  {
+    if (contactsList[i].id == id)
+    {
+      contactsList.splice(i,1);
+      return;
+
+    }
+  }
+  console.log("DeleteContactById: contact not found:" + id);
+
+}
+
+
+
+
+function DeleteNullContacts(contactsList)
+{
+  var i = 0;
+    while (i < contactsList.length)
+    {
+      if (contactsList[i] == null)
+      {
+        contactsList.splice(i, 1);
+      }
+      else
+      {
+        i++;
+      }
+    }
+}
+
+
+
+function WritePhoneBook(contactsList)
+{
+  var phoneBook = {};
+  phoneBook.contacts = contactsList;
+  var phoneBookJson = JSON.stringify(phoneBook);
+  fs.writeFile(phoneBookJsonFileName, phoneBookJson, function(err){
+    if (err != null)
+    {
+      console.log("WritePhoneBook: error: "+ err);
+    }
+  });
+}
